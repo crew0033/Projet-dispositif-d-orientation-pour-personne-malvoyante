@@ -1,0 +1,47 @@
+#include <HardwareSerial.h>
+#include <DFRobotDFPlayerMini.h>
+
+// Communication avec le UM005
+HardwareSerial rfidSerial(1); // Port série pour le RFID (RX sur GPIO 4)
+
+// Communication avec le DFPlayer
+HardwareSerial mp3Serial(2);  // Port série pour le DFPlayer (RX sur GPIO 16, TX sur GPIO 17)
+DFRobotDFPlayerMini mp3;      // Création de l'objet DFPlayer
+
+void setup() {
+  Serial.begin(115200);           
+  rfidSerial.begin(9600, SERIAL_8N1, 4, -1); // RFID UM005 (RS-TX sur GPIO 4)
+  mp3Serial.begin(9600, SERIAL_8N1, 16, 17); // DFPlayer Mini (RX=16, TX=17)
+
+  if (!mp3.begin(mp3Serial)) {      // Initialisation du DFPlayer
+    Serial.println("Erreur DFPlayer !");
+    while (true);
+  }
+  mp3.volume(20);                  // Réglez le volume du DFPlayer
+  Serial.println("Système prêt !");
+}
+
+void loop() {
+  if (rfidSerial.available()) {     // Vérifiez si des données arrivent du UM005
+    String badgeID = readBadge();   // Lecture du badge
+    if (badgeID != "") {
+      Serial.println("Badge détecté : " + badgeID);
+      playMessage();                // Jouer le fichier audio
+    }
+  }
+}
+
+String readBadge() {
+  String badge = "";
+  while (rfidSerial.available()) {
+    char c = rfidSerial.read();     // Lire caractère par caractère
+    if (c == '\n') break;           // Fin du badge (nouvelle ligne)
+    badge += c;
+  }
+  return badge;
+}
+
+void playMessage() {
+  mp3.play(1); // Joue le fichier "001.mp3"
+  Serial.println("Message audio : Salle 221");
+}
