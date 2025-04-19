@@ -1,0 +1,113 @@
+#include <Arduino.h>
+#include <HardwareSerial.h>
+#include <DFRobotDFPlayerMini.h>
+#include <BLEDevice.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
+// Définition des broches pour le DFPlayer Mini
+#define DFPLAYER_RX 16
+#define DFPLAYER_TX 17
+#define LED_BUILTIN 2
+
+// Déclaration des objets nécessaires
+HardwareSerial mySoftwareSerial(1);
+DFRobotDFPlayerMini myDFPlayer;      // Instance du lecteur audio DFPlayer Mini
+BLEScan* pBLEScan;                   // Pointeur pour le scan BLE
+BLEServer* pServer = NULL;           // Serveur BLE
+bool deviceDetected = false;         // Indique si un appareil BLE a été détecté
+bool audioPlaying = false;           // Indique si un fichier audio est en cours de lecture
+bool deviceConnected = false;        // Indique si une connexion BLE est active
+
+#define SERVICE_UUID "12345678-1234-5678-1234-56789abcdef0"
+#define CHARACTERISTIC_UUID "87654321-4321-6789-4321-6789abcdef01"
+
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
+public:
+    void onResult(BLEAdvertisedDevice advertisedDevice) override {
+        deviceDetected = true;
+        Serial.print("Appareil BLE détecté ! Adresse MAC: ");
+        Serial.println(advertisedDevice.getAddress().toString().c_str());
+    }
+};
+
+class MyServerCallbacks : public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) override {
+        Serial.println("ESP32_B connecté !");
+        deviceConnected = true;
+        digitalWrite(LED_BUILTIN, HIGH); // Allumer la LED à la connexion
+    }
+
+    void onDisconnect(BLEServer* pServer) override {
+        Serial.println("ESP32_B déconnecté !");
+        deviceConnected = false;
+        digitalWrite(LED_BUILTIN, LOW);  // Éteindre la LED à la déconnexion
+    }
+};
+
+void setup() {
+    Serial.begin(115200);
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, LOW);
+
+    mySoftwareSerial.begin(9600, SERIAL_8N1, DFPLAYER_RX, DFPLAYER_TX);
+    if (!myDFPlayer.begin(mySoftwareSerial)) {
+        Serial.println("Erreur DFPlayer Mini !");
+        while (true); // Boucle infinie en cas d’échec
+    }
+    Serial.println("DFPlayer prêt !");
+    myDFPlayer.volume(40); // Réglage du volume
+
+    // Initialisation du module BLE pour le scan
+    BLEDevice::init("ESP32_BLE_Scanner");
+    pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setActiveScan(true); // Scan actif (demande plus d'énergie mais plus précis)
+    pBLEScan->setInterval(100);    // Intervalle entre les scans
+    pBLEScan->setWindow(99);       // Durée de chaque scan
+
+    // Configuration du serveur BLE et des services/caractéristiques
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
+
+    // Création d’un service BLE avec une caractéristique
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+    BLECharacteristic *pCharacteristic = pService->createCharacteristic(
+        CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+    );
+    pCharacteristic->setValue("Hello ESP32_B");
+    pService->start();
+
+    // Démarrage de la publicité BLE
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->start();
+}
+
+void loop() {
+    Serial.println("Scan BLE en cours...");
+    deviceDetected = false;
+
+    // Lancer un scan BLE pendant 5 secondes
+    pBLEScan->start(5, false);
+
+    // Si un appareil BLE est détecté et qu’aucun son n’est en cours de lecture
+    if (deviceDetected && !audioPlaying) {
+        digitalWrite(LED_BUILTIN, HIGH); // Allumer la LED
+        Serial.println("Lecture de 001.mp3...");
+        myDFPlayer.play(1); // Lecture du fichier audio 001.mp3
+        audioPlaying = true;
+    }
+
+    // Vérifie si la lecture est terminée
+    if (audioPlaying && myDFPlayer.readState() == 0) {
+        digitalWrite(LED_BUILTIN, LOW); // Éteindre la LED
+        Serial.println("🔇 Audio terminé, LED éteinte.");
+        audioPlaying = false;
+    }
+
+    delay(2000); // Pause avant le prochain scan
+}
