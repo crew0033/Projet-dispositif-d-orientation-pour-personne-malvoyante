@@ -1,0 +1,69 @@
+#include <Arduino.h>
+#include <ESP32Servo.h>
+
+#define SERVO_PIN 26  // Broche du servomoteur
+#define TRIG_PIN  5   // Trig du capteur HC-SR04
+#define ECHO_PIN  18  // Echo du capteur HC-SR04
+
+Servo servo;  // Création de l'objet Servo
+
+unsigned long lastDistanceTime = 0;  // Pour gérer l'affichage continu de la distance
+const int distanceInterval = 200;    // Mesurer la distance tous les 200ms
+
+int servoPos = 0;  // Position actuelle du servo
+int step = 10;     // Pas d'incrémentation du servo
+
+void setup() {
+    Serial.begin(115200);
+
+    // Initialisation du capteur HC-SR04
+    pinMode(TRIG_PIN, OUTPUT);
+    pinMode(ECHO_PIN, INPUT);
+    
+    // Initialisation du servomoteur
+    servo.setPeriodHertz(50);  
+    servo.attach(SERVO_PIN, 500, 2500);  
+
+    Serial.println("Démarrage : Servo + HC-SR04");
+}
+long getDistance() {
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+
+    long duration = pulseIn(ECHO_PIN, HIGH, 30000);  // Timeout de 30ms pour éviter les blocages
+    if (duration == 0) return -1;  // Erreur de mesure
+
+    long distance = duration * 0.034 / 2;  // Convertir en cm
+    return distance;
+}
+
+void loop() {
+    // Mesurer la distance toutes les 200ms
+    if (millis() - lastDistanceTime >= distanceInterval) {
+        lastDistanceTime = millis();
+        long distance = getDistance();
+
+        if (distance != -1) {
+            Serial.print("Distance mesurée : ");
+            Serial.print(distance);
+            Serial.println(" cm");
+        } else {
+            Serial.println("Erreur de mesure !");
+        }
+    }
+
+    // Faire bouger le servomoteur en continu
+    servo.write(servoPos);
+    Serial.print("Position Servo : ");
+    Serial.println(servoPos);
+
+    servoPos += step;
+    if (servoPos >= 180 || servoPos <= 0) {
+        step = -step;  // Inverser la direction du servo
+    }
+
+    delay(500);  // Pause entre chaque mouvement du servo
+}
