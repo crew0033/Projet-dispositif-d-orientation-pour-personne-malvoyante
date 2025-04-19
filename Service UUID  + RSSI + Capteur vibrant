@@ -1,0 +1,50 @@
+#include <BLEAdvertisedDevice.h>
+#include <BLEDevice.h>
+#include <BLEScan.h>
+
+const int PIN = 2;  // Pin de sortie pour signaler la détection
+const int CUTOFF = -60;  // Seuil RSSI pour considérer une détection comme valable
+
+// Adresse MAC spécifique à détecter
+const char* targetMAC = "3C-55-76-23-44-70";  // Remplacez par l'adresse MAC souhaitée
+
+void setup() {
+  pinMode(PIN, OUTPUT);
+  BLEDevice::init("");
+}
+
+void loop() {
+  BLEScan *scan = BLEDevice::getScan();
+  scan->setActiveScan(true);
+  BLEScanResults *results = scan->start(1, false);  // Utilisation d'un pointeur
+
+  int best = CUTOFF;  // RSSI le plus fort détecté
+  bool targetDetected = false;  // Indicateur si l'adresse MAC cible est trouvée
+
+  // Vérifier si le scan a renvoyé un résultat valide
+  if (results) {
+    // Parcours de tous les appareils détectés
+    for (int i = 0; i < results->getCount(); i++) {
+      BLEAdvertisedDevice device = results->getDevice(i);
+      int rssi = device.getRSSI();
+
+      // Comparaison de l'adresse MAC
+      if (device.getAddress().toString() == targetMAC) {
+        targetDetected = true;  // L'adresse MAC cible a été détectée
+        best = rssi;  // Mettre à jour le RSSI pour cette adresse MAC
+      }
+    }
+
+    // Libérer la mémoire utilisée par le scan
+    delete results;
+  }
+
+  // Allumer ou éteindre le pin en fonction de la détection
+  if (targetDetected && best > CUTOFF) {
+    digitalWrite(PIN, HIGH);  // Activation du PIN si l'adresse MAC est détectée
+  } else {
+    digitalWrite(PIN, LOW);  // Désactivation du PIN sinon
+  }
+
+  delay(1000);  // Attente d'une seconde avant de refaire un scan
+}
